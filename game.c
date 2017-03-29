@@ -5,8 +5,10 @@
 #include <pthread.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <curses.h>
+#include <signal.h>
 
-#define HI 10
+#define HI 5
 #define LOW 3
 
 void* createmole(void* id);
@@ -14,15 +16,26 @@ void* listenUserInput();
 void hiding(int sleepTime, int myId);
 void visible(int upTime, int myId);
 void printGameboard();
+static void finish(int sig);
 
 //Critical section
 int* gameboard;
+int* playeyKeyPress;
 //Mutex lock
 sem_t mutex;
 
+
 int MOLES;
 int MAXVISIBLE;
-int listenerStatus = 0;
+int exiting = 0;
+
+char EMPTYHOLETOP[] = " ____";
+char EMPTYHOLEMID[] = "|    |";
+char EMPTYHOLEBOT[] = "|____|";
+
+char GOPHERHOLETOP[] = " ____";
+char GOPHERHOLEMID[] = "|####|";
+char GOPHERHOLEBOT[] = "|####|";
 
 int main(int argc, char** argv){
 
@@ -44,8 +57,10 @@ int main(int argc, char** argv){
     exit(1);
   }
 
+
   //Initialize the critical section
   gameboard = malloc(sizeof(int)*MOLES);
+  //playerKeyPress = malloc(sizeof(int)*MOLES);
   //Initialize semaphore
   sem_init(&mutex, 0, 1);
 
@@ -59,9 +74,42 @@ int main(int argc, char** argv){
 
   pthread_create(&listenerThread, NULL, listenUserInput, NULL);
 
-  while(listenerStatus != -1){
-      //busy wait
+  int num = 0;
+  int row, col;
+  (void) signal(SIGINT, finish);
+  (void) initscr();            /* initialize curses mode */
+  getmaxyx(stdscr,row,col);      /* get number of row/col for screen size */
+  keypad(stdscr, TRUE);        /* enable keyboard mapping */
+  (void) nonl();               /* tell curses not to do NL -> CR/NL on output */
+  (void) cbreak();             /* take input chars one at a time, no wait \n */
+
+
+
+  for(;;){
+    int i;
+    for(i = 0; i < MOLES; i++){
+        if(gameboard[i] == 1){
+          mvprintw(0, (i*6)+2, "%d", i);
+          mvprintw(1, (i*6), "%s", GOPHERHOLETOP);
+          mvprintw(2, (i*6), "%s", GOPHERHOLEMID);
+          mvprintw(3, (i*6), "%s", GOPHERHOLEBOT);
+        }
+        else{
+          mvprintw(0, (i*6)+2, "%d", i);
+          mvprintw(1, (i*6), "%s", EMPTYHOLETOP);
+          mvprintw(2, (i*6), "%s", EMPTYHOLEMID);
+          mvprintw(3, (i*6), "%s", EMPTYHOLEBOT);
+        }
+
+    }
+    mvprintw(row/2, col/2, "COUNT:%d", i);
+
+    refresh();
+    //int c = getch();          /* refresh, accept single keystroke input */
+    // attrset(COLOR_PAIR(num % 8));
+    // num++;
   }
+  finish(0);
 
   pthread_join(listenerThread, NULL);
   for(i = 0; i < MOLES; i++){
@@ -69,29 +117,40 @@ int main(int argc, char** argv){
   }
   sem_destroy(&mutex);
   free(ids);
-
+  //free(playerKeyPress);
   free(gameboard);
   return 0;
 }
-
+static void finish(int sig){
+  endwin();
+}
 void* listenUserInput(){
+  //printf("Listener created...\n");
   //USER INPUT
-  char * input = malloc(sizeof(char)*10);
-  while(strncmp(input, "quit", 10) < 0){
-    read(STDIN_FILENO, input, sizeof(char)*10);
-    //fgets(input, 10, stdin);
+  while(1){
+    int c = getch();
   }
+
+
+  // char * input = malloc(sizeof(char)*10);
+  // while(strncmp(input, "quit", 10) < 0){
+  //   fgets(input, 10, stdin);
+  //   sleep(2);
+    //printf("INPUT: %s\n", input);
+
+  //}
   //Cleanup
-  if(strncmp(input, "quit", 10) == 1){
-    free(input);
-    listenerStatus = -1;
-    printf("HERE!!!\n");
-  }
+  //free(input);
+  exiting = 1;
   return NULL;
 }
 void* createmole(void* id){
   long myId = (long)id;
+  //printf("Mole %d created...\n", (int)myId);
   while(1){
+    if(exiting == 1){
+      pthread_exit(0);
+    }
     hiding(rand() % (HI - LOW), myId);
     visible(rand() % (HI - LOW), myId);
   }
@@ -105,7 +164,7 @@ void hiding(int sleepTime, int myId){
   gameboard[myId] = 0;
   sem_post(&mutex);
 
-  printGameboard();
+  //printGameboard();
   sleep(sleepTime);
 }
 
@@ -125,7 +184,7 @@ void visible(int upTime, int myId){
   }
   sem_post(&mutex);
 
-  printGameboard();
+  //printGameboard();
   sleep(upTime);
 }
 
