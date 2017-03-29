@@ -3,15 +3,16 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <semaphore.h>
 
 #define HI 10
 #define LOW 3
 
 void* createmole(void* id);
+void* listenUserInput();
 void hiding(int sleepTime, int myId);
 void visible(int upTime, int myId);
-void requestAccess();
 void printGameboard();
 
 //Critical section
@@ -21,6 +22,7 @@ sem_t mutex;
 
 int MOLES;
 int MAXVISIBLE;
+int listenerStatus = 0;
 
 int main(int argc, char** argv){
 
@@ -47,6 +49,7 @@ int main(int argc, char** argv){
   //Initialize semaphore
   sem_init(&mutex, 0, 1);
 
+  pthread_t listenerThread;
   pthread_t* ids = malloc(sizeof(pthread_t)*MOLES);
 
   int i;
@@ -54,27 +57,38 @@ int main(int argc, char** argv){
     pthread_create(&ids[i], NULL, createmole, (void *)i);
   }
 
-  //USER INPUT
-  char * input = malloc(sizeof(char)*10);
-  while(strncmp(input, "quit", 10) < 0){
-    fgets(input, 10, stdin);
+  pthread_create(&listenerThread, NULL, listenUserInput, NULL);
+
+  while(listenerStatus != -1){
+      //busy wait
   }
 
-  //Cleanup
-  if(strncmp(input, "quit", 10) == 1){
-    free(input);
-
-    for(i = 0; i < MOLES; i++){
-      pthread_join(ids[i], NULL);
-    }
-    sem_destroy(&mutex);
-    free(ids);
+  pthread_join(listenerThread, NULL);
+  for(i = 0; i < MOLES; i++){
+    pthread_join(ids[i], NULL);
   }
+  sem_destroy(&mutex);
+  free(ids);
 
   free(gameboard);
   return 0;
 }
 
+void* listenUserInput(){
+  //USER INPUT
+  char * input = malloc(sizeof(char)*10);
+  while(strncmp(input, "quit", 10) < 0){
+    read(STDIN_FILENO, input, sizeof(char)*10);
+    //fgets(input, 10, stdin);
+  }
+  //Cleanup
+  if(strncmp(input, "quit", 10) == 1){
+    free(input);
+    listenerStatus = -1;
+    printf("HERE!!!\n");
+  }
+  return NULL;
+}
 void* createmole(void* id){
   long myId = (long)id;
   while(1){
@@ -84,10 +98,6 @@ void* createmole(void* id){
   return NULL;
 }
 
-//Alter mutex
-void requestAccess(){
-
-}
 //Request access, alter mutex
 void hiding(int sleepTime, int myId){
 
@@ -119,6 +129,7 @@ void visible(int upTime, int myId){
   sleep(upTime);
 }
 
+//Testing purposes
 void printGameboard(){
   int i;
   for(i = 0; i < MOLES; i++){
