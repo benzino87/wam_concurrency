@@ -1,15 +1,135 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+#include <semaphore.h>
 
+#define HI 10
+#define LOW 3
+
+void* createmole(void* id);
+void hiding(int sleepTime, int myId);
+void visible(int upTime, int myId);
+void requestAccess();
+void printGameboard();
+
+//Critical section
+int* gameboard;
+//Mutex lock
+sem_t mutex;
+
+int MOLES;
+int MAXVISIBLE;
 
 int main(int argc, char** argv){
 
-  if(argc < 2){
-    perror("No arguments supplied\n");
-    perror("./game.c <number>")
-    exit(1)
+  if(argc != 3){
+    perror("Too few or too many arguments supplied:");
+    printf("./executable <number>\n");
+    exit(1);
   }
 
-  printf("Number:%d\n", argv[1]);
+  MOLES = atoi(argv[1]);
+  MAXVISIBLE = atoi(argv[2]);
 
+  if(MOLES <= 0 || MOLES > 10){
+    perror("Number must be a range from 1 - 10:");
+    exit(1);
+  }
+  if(MAXVISIBLE <= 0 || MAXVISIBLE > MOLES){
+    perror("Number must be a range from 1 - MOLES:");
+    exit(1);
+  }
+
+  //Initialize the critical section
+  gameboard = malloc(sizeof(int)*MOLES);
+  //Initialize semaphore
+  sem_init(&mutex, 0, 1);
+
+  pthread_t* ids = malloc(sizeof(pthread_t)*MOLES);
+
+  int i;
+  for(i = 0; i < MOLES; i++){
+    pthread_create(&ids[i], NULL, createmole, (void *)i);
+  }
+
+  //USER INPUT
+  char * input = malloc(sizeof(char)*10);
+  while(strncmp(input, "quit", 10) < 0){
+    fgets(input, 10, stdin);
+  }
+
+  //Cleanup
+  if(strncmp(input, "quit", 10) == 1){
+    free(input);
+
+    for(i = 0; i < MOLES; i++){
+      pthread_join(ids[i], NULL);
+    }
+    sem_destroy(&mutex);
+    free(ids);
+  }
+
+  free(gameboard);
   return 0;
+}
+
+void* createmole(void* id){
+  long myId = (long)id;
+  while(1){
+    hiding(rand() % (HI - LOW), myId);
+    visible(rand() % (HI - LOW), myId);
+  }
+  return NULL;
+}
+
+//Alter mutex
+void requestAccess(){
+
+}
+//Request access, alter mutex
+void hiding(int sleepTime, int myId){
+
+  sem_wait(&mutex);
+  gameboard[myId] = 0;
+  sem_post(&mutex);
+
+  printGameboard();
+  sleep(sleepTime);
+}
+
+//Request access, alter mutex
+void visible(int upTime, int myId){
+  int i;
+  int count = 0;
+
+  sem_wait(&mutex);
+  for(i = 0; i < MOLES; i++){
+    if(gameboard[i] == 1){
+      count++;
+    }
+  }
+  if(count < MAXVISIBLE){
+    gameboard[myId] = 1;
+  }
+  sem_post(&mutex);
+
+  printGameboard();
+  sleep(upTime);
+}
+
+void printGameboard(){
+  int i;
+  for(i = 0; i < MOLES; i++){
+    if(i == 0){
+      printf("[%d,", gameboard[i]);
+    }
+    else if(i == MOLES-1){
+      printf("%d]\n", gameboard[i]);
+    }
+    else{
+      printf("%d,", gameboard[i]);
+    }
+  }
 }
