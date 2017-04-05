@@ -7,6 +7,7 @@
 #include <semaphore.h>
 #include <curses.h>
 #include <signal.h>
+#include <time.h>
 
 #define HI 5
 #define LOW 3
@@ -15,33 +16,40 @@ void* createmole(void* id);
 void* listenUserInput();
 void hiding(int sleepTime, int myId);
 void visible(int upTime, int myId);
-void printGameboard();
-static void finish(int sig);
 
 //Critical section
 int* gameboard;
 int* playeyKeyPress;
 //Mutex lock
 sem_t mutex;
-
+sem_t screenMutex;
 
 int MOLES;
 int MAXVISIBLE;
+int HITS = 0;
+int MISSES = 0;
 int exiting = 0;
+
+
+char TITLETOP1[] = " _      ____            __                           __";
+char TITLETOP2[] = "| | /| / / /  ___ _____/ /__    ____     ____  ___  / /__";
+char TITLETOP3[] = "| |/ |/ / _ :/ _ `/ __/  '_/   / _ `/   /  ' :/ _ :/ / -_)";
+char TITLETOP4[] = "|__/|__/_//_/:_,_/:__/_/:_:    :_,_/   /_/_/_/:___/_/:__/";
+
 
 char EMPTYHOLETOP[] = " ____";
 char EMPTYHOLEMID[] = "|    |";
 char EMPTYHOLEBOT[] = "|____|";
 
 char GOPHERHOLETOP[] = " ____";
-char GOPHERHOLEMID[] = "|####|";
-char GOPHERHOLEBOT[] = "|####|";
+char GOPHERHOLEMID[] = "|o  o|";
+char GOPHERHOLEBOT[] = "|_''_|";
 
 int main(int argc, char** argv){
 
   if(argc != 3){
     perror("Too few or too many arguments supplied:");
-    printf("./executable <number>\n");
+    printf("./executable <number of moles> <number displayed>\n");
     exit(1);
   }
 
@@ -60,9 +68,10 @@ int main(int argc, char** argv){
 
   //Initialize the critical section
   gameboard = malloc(sizeof(int)*MOLES);
-  //playerKeyPress = malloc(sizeof(int)*MOLES);
-  //Initialize semaphore
+
+  //Initialize semaphores
   sem_init(&mutex, 0, 1);
+  sem_init(&screenMutex, 0, 1);
 
   pthread_t listenerThread;
   pthread_t* ids = malloc(sizeof(pthread_t)*MOLES);
@@ -74,42 +83,87 @@ int main(int argc, char** argv){
 
   pthread_create(&listenerThread, NULL, listenUserInput, NULL);
 
-  int num = 0;
   int row, col;
-  (void) signal(SIGINT, finish);
   (void) initscr();            /* initialize curses mode */
-  getmaxyx(stdscr,row,col);      /* get number of row/col for screen size */
-  keypad(stdscr, TRUE);        /* enable keyboard mapping */
-  (void) nonl();               /* tell curses not to do NL -> CR/NL on output */
+  getmaxyx(stdscr,row,col);    /* get number of row/col for screen size */
   (void) cbreak();             /* take input chars one at a time, no wait \n */
+  (void) noecho();             /* prevent keystrokes from echoing to screen */
+
+  time_t startTime = time(NULL);
 
 
-
+  //Iterate through the gameboard and print picture representation of MOLES
+  //(up or hiding). This is protected by a semaphore to prevent keystrokes
+  //to cause gui printing to change positions
   for(;;){
     int i;
+    sem_wait(&screenMutex);
     for(i = 0; i < MOLES; i++){
+
+      mvprintw(0, 0, "%s", TITLETOP1);
+      mvprintw(1, 0, "%s", TITLETOP2);
+      mvprintw(2, 0, "%s", TITLETOP3);
+      mvprintw(3, 0, "%s", TITLETOP4);
+
         if(gameboard[i] == 1){
-          mvprintw(0, (i*6)+2, "%d", i);
-          mvprintw(1, (i*6), "%s", GOPHERHOLETOP);
-          mvprintw(2, (i*6), "%s", GOPHERHOLEMID);
-          mvprintw(3, (i*6), "%s", GOPHERHOLEBOT);
+          mvprintw(5, (i*6)+2, "%d", i);
+          mvprintw(6, (i*6), "%s", GOPHERHOLETOP);
+          mvprintw(7, (i*6), "%s", GOPHERHOLEMID);
+          mvprintw(8, (i*6), "%s", GOPHERHOLEBOT);
         }
+
         else{
-          mvprintw(0, (i*6)+2, "%d", i);
-          mvprintw(1, (i*6), "%s", EMPTYHOLETOP);
-          mvprintw(2, (i*6), "%s", EMPTYHOLEMID);
-          mvprintw(3, (i*6), "%s", EMPTYHOLEBOT);
+          mvprintw(5, (i*6)+2, "%d", i);
+          mvprintw(6, (i*6), "%s", EMPTYHOLETOP);
+          mvprintw(7, (i*6), "%s", EMPTYHOLEMID);
+          mvprintw(8, (i*6), "%s", EMPTYHOLEBOT);
         }
-
     }
-    mvprintw(row/2, col/2, "COUNT:%d", i);
 
+    time_t curTime = time(NULL);
+    time_t totalTime = 30;
+
+    if(totalTime - (curTime-startTime) == 0){
+      clear();
+      mvprintw(0, 0, "YOU LOSE!! Hit esc to exit...");
+      mvprintw(1, 0, "STATS");
+      mvprintw(2, 0, "HITS:%d", HITS);
+      mvprintw(3, 0, "MISSES:%d", MISSES);
+      char c;
+      while(1){
+        if((c=getch())==27){
+          exiting = 1;
+          endwin();
+          break;
+        }
+      }
+      break;
+    }
+
+    if(exiting == 1){
+      clear();
+      mvprintw(0, 0, "YOU WIN!! Hit esc to exit...");
+      mvprintw(1, 0, "STATS");
+      mvprintw(2, 0, "HITS:%d", HITS);
+      mvprintw(3, 0, "MISSES:%d", MISSES);
+      char c;
+      while(1){
+        if((c=getch())==27){
+          exiting = 1;
+          endwin();
+          break;
+        }
+      }
+      break;
+    }
+
+    mvprintw(row/2, col/2, "HITS:%d", HITS);
+    mvprintw((row/2)+1, col/2, "MISSES:%d", MISSES);
+    mvprintw((row/2)+2, col/2, "TIMER:%d", totalTime-(curTime-startTime));
     refresh();
-    //int c = getch();          /* refresh, accept single keystroke input */
-    // attrset(COLOR_PAIR(num % 8));
-    // num++;
+    sem_post(&screenMutex);
   }
-  finish(0);
+
 
   pthread_join(listenerThread, NULL);
   for(i = 0; i < MOLES; i++){
@@ -119,31 +173,36 @@ int main(int argc, char** argv){
   free(ids);
   //free(playerKeyPress);
   free(gameboard);
+
   return 0;
 }
-static void finish(int sig){
-  endwin();
-}
+
+
 void* listenUserInput(){
   //printf("Listener created...\n");
-  //USER INPUT
   while(1){
-    int c = getch();
+    char c = getch();          /* refresh, accept single keystroke input */
+    int pos = atoi(&c);
+
+    sem_wait(&screenMutex);
+    if(gameboard[pos] == 1){
+      HITS++;
+      //sem_wait(&mutex);
+      gameboard[pos] = 0;
+      //sem_post(&mutex);
+    }else{
+      MISSES++;
+    }
+    refresh();
+    sem_post(&screenMutex);
+    if(HITS == 30){
+      exiting = 1;
+    }
   }
-
-
-  // char * input = malloc(sizeof(char)*10);
-  // while(strncmp(input, "quit", 10) < 0){
-  //   fgets(input, 10, stdin);
-  //   sleep(2);
-    //printf("INPUT: %s\n", input);
-
-  //}
-  //Cleanup
-  //free(input);
-  exiting = 1;
   return NULL;
 }
+
+
 void* createmole(void* id){
   long myId = (long)id;
   //printf("Mole %d created...\n", (int)myId);
@@ -163,8 +222,6 @@ void hiding(int sleepTime, int myId){
   sem_wait(&mutex);
   gameboard[myId] = 0;
   sem_post(&mutex);
-
-  //printGameboard();
   sleep(sleepTime);
 }
 
@@ -183,23 +240,5 @@ void visible(int upTime, int myId){
     gameboard[myId] = 1;
   }
   sem_post(&mutex);
-
-  //printGameboard();
   sleep(upTime);
-}
-
-//Testing purposes
-void printGameboard(){
-  int i;
-  for(i = 0; i < MOLES; i++){
-    if(i == 0){
-      printf("[%d,", gameboard[i]);
-    }
-    else if(i == MOLES-1){
-      printf("%d]\n", gameboard[i]);
-    }
-    else{
-      printf("%d,", gameboard[i]);
-    }
-  }
 }
