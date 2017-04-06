@@ -64,6 +64,11 @@ char GOPHERHOLETOP[] = " ____";
 char GOPHERHOLEMID[] = "|o  o|";
 char GOPHERHOLEBOT[] = "|_''_|";
 
+// Gopher hole
+char GOPHERHITTOP[] = " ____";
+char GOPHERHITMID[] = "|####|";
+char GOPHERHITBOT[] = "|####|";
+
 /**
  * Main method handles all of the game logic. It spawns off a number of threads
  * associated with number of moles. Each mole sleeps for a random amount of time,
@@ -141,18 +146,24 @@ int main(int argc, char** argv){
       mvprintw(2, 0, "%s", TITLETOP3);
       mvprintw(3, 0, "%s", TITLETOP4);
 
-        if(gameboard[i] == 1){
+        if(gameboard[i] == 0){
+          mvprintw(5, (i*6)+2, "%d", i);
+          mvprintw(6, (i*6), "%s", EMPTYHOLETOP);
+          mvprintw(7, (i*6), "%s", EMPTYHOLEMID);
+          mvprintw(8, (i*6), "%s", EMPTYHOLEBOT);
+
+        }
+        else if(gameboard[i] == 1){
           mvprintw(5, (i*6)+2, "%d", i);
           mvprintw(6, (i*6), "%s", GOPHERHOLETOP);
           mvprintw(7, (i*6), "%s", GOPHERHOLEMID);
           mvprintw(8, (i*6), "%s", GOPHERHOLEBOT);
         }
-
-        else{
+        else if(gameboard[i] == 2){
           mvprintw(5, (i*6)+2, "%d", i);
-          mvprintw(6, (i*6), "%s", EMPTYHOLETOP);
-          mvprintw(7, (i*6), "%s", EMPTYHOLEMID);
-          mvprintw(8, (i*6), "%s", EMPTYHOLEBOT);
+          mvprintw(6, (i*6), "%s", GOPHERHITTOP);
+          mvprintw(7, (i*6), "%s", GOPHERHITMID);
+          mvprintw(8, (i*6), "%s", GOPHERHITBOT);
         }
     }
 
@@ -233,7 +244,7 @@ void* listenUserInput(){
       HITS++;
       //Do not wait on lock to be freed. We do not want this to be qued up with
       //moles
-      gameboard[pos] = 0;
+      gameboard[pos] = 2;
     }else{
       MISSES++;
     }
